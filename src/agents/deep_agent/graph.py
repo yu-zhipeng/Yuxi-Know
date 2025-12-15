@@ -4,10 +4,17 @@ from deepagents import create_deep_agent
 from langchain.agents.middleware import ModelRequest, dynamic_prompt
 
 from src.agents.common import BaseAgent, load_chat_model
-from src.agents.common.middlewares import context_based_model, inject_attachment_context
+from src.agents.common.middlewares import (
+    DynamicToolMiddleware,
+    context_based_model,
+    inject_attachment_context,
+)
+from src.agents.common.mcp import MCP_SERVERS
 from src.agents.common.tools import search
+from src.agents.common.subagents import calc_agent_tool
 
 from .prompts import DEEP_PROMPT
+from .context import DeepContext
 
 search_tools = [search]
 
@@ -61,16 +68,20 @@ class DeepAgent(BaseAgent):
         "file_upload",
         "todo",
         "files",
+        "tools",
+        "mcps",
     ]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.graph = None
         self.checkpointer = None
+        self.context_schema = DeepContext
 
     async def get_tools(self):
         """返回 Deep Agent 的专用工具"""
-        tools = search_tools
+        tools = search_tools.copy()
+        tools.append(calc_agent_tool)
         return tools
 
     async def get_graph(self, **kwargs):
@@ -81,15 +92,22 @@ class DeepAgent(BaseAgent):
         # 获取上下文配置
         context = self.context_schema.from_file(module_name=self.module_name)
 
+        base_tools = await self.get_tools()
+        dynamic_tool_middleware = DynamicToolMiddleware(
+            base_tools=base_tools, mcp_servers=list(MCP_SERVERS.keys())
+        )
+        await dynamic_tool_middleware.initialize_mcp_tools()
+
         # 使用 create_deep_agent 创建深度智能体
         graph = create_deep_agent(
             model=load_chat_model(context.model),
-            tools=await self.get_tools(),
+            tools=base_tools,
             subagents=[critique_sub_agent, research_sub_agent],
             middleware=[
                 context_based_model,  # 动态模型选择
                 context_aware_prompt,  # 动态系统提示词
                 inject_attachment_context,  # 附件上下文注入
+                dynamic_tool_middleware,  # 动态工具/MCP 选择
             ],
             checkpointer=await self._get_checkpointer(),
         )

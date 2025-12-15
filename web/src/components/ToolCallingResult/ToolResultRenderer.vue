@@ -30,6 +30,37 @@
       <img :src="parsedData" />
     </div>
 
+    <!-- Excel 导出结果 -->
+    <div v-else-if="isExcelExportResult" class="excel-export-result">
+      <div class="excel-info">
+        <div class="file-name" v-if="downloadFileName">
+          <span class="label">文件名：</span>{{ downloadFileName }}
+        </div>
+        <div class="file-path">
+          <span class="label">路径：</span>{{ downloadPath }}
+        </div>
+      </div>
+      <div class="excel-actions">
+        <a-button
+          type="primary"
+          size="small"
+          @click="handleDownload"
+          :loading="isDownloading"
+          :disabled="!downloadPath"
+        >
+          下载文件
+        </a-button>
+        <a-button
+          type="link"
+          size="small"
+          @click="copyPath"
+          :disabled="!downloadPath"
+        >
+          复制路径
+        </a-button>
+      </div>
+    </div>
+
     <!-- 默认的原始数据展示 -->
     <div v-else class="default-result">
       <!-- <div class="default-header">
@@ -45,11 +76,13 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { ToolOutlined } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
 import WebSearchResult from './WebSearchResult.vue'
 import KnowledgeBaseResult from './KnowledgeBaseResult.vue'
 import KnowledgeGraphResult from './KnowledgeGraphResult.vue'
 import CalculatorResult from './CalculatorResult.vue'
 import { useAgentStore } from '@/stores/agent';
+import { exportApi } from '@/apis/agent_api';
 
 const agentStore = useAgentStore()
 
@@ -67,7 +100,6 @@ const props = defineProps({
 const tool = computed(() => {
   return agentStore?.availableTools?.[props.toolName] || null
 })
-
 
 // 解析数据
 const parsedData = computed(() => {
@@ -185,6 +217,84 @@ const isCalculatorResult = computed(() => {
   return typeof parsedData.value === 'number'
 })
 
+const isExcelExportResult = computed(() => {
+  const data = parsedData.value
+  const toolNameLower = (props.toolName || '').toLowerCase()
+
+  const hasExcelKeyword =
+    toolNameLower.includes('excel') ||
+    toolNameLower.includes('导出') ||
+    toolNameLower.includes('export')
+
+  const path =
+    typeof data === 'string'
+      ? data.trim()
+      : typeof data === 'object' && data
+        ? data.path || data.file_path || data.filePath || data.location
+        : null
+
+  if (!path || typeof path !== 'string') return false
+
+  const hasExcelSuffix = path.endsWith('.xlsx') || path.endsWith('.xls')
+  const underExports = path.includes('/exports/')
+
+  return hasExcelSuffix && (hasExcelKeyword || underExports)
+})
+
+const downloadPath = computed(() => {
+  if (!isExcelExportResult.value) return ''
+  const data = parsedData.value
+  if (typeof data === 'string') {
+    return data.trim()
+  }
+  if (data && typeof data === 'object') {
+    return data.path || data.file_path || data.filePath || data.location || ''
+  }
+  return ''
+})
+
+const downloadFileName = computed(() => {
+  const path = downloadPath.value
+  if (!path) return ''
+  return path.split('/').pop() || path
+})
+
+const isDownloading = ref(false)
+
+const handleDownload = async () => {
+  if (!downloadPath.value) return
+  try {
+    isDownloading.value = true
+    const response = await exportApi.downloadGeneratedExport(downloadPath.value)
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = downloadFileName.value || 'export.xlsx'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    message.success('Excel 文件下载完成')
+  } catch (error) {
+    console.error('下载 Excel 失败:', error)
+    message.error(error?.message || '下载 Excel 失败')
+  } finally {
+    isDownloading.value = false
+  }
+}
+
+const copyPath = async () => {
+  if (!downloadPath.value) return
+  try {
+    await navigator.clipboard.writeText(downloadPath.value)
+    message.success('文件路径已复制')
+  } catch (error) {
+    console.warn('复制失败:', error)
+    message.error('复制失败，请手动复制')
+  }
+}
+
 // 格式化数据用于默认展示
 const formatData = (data) => {
   if (typeof data === 'object') {
@@ -267,6 +377,41 @@ defineExpose({
     width: 100%;
     height: 100%;
     object-fit: contain;
+  }
+
+  .excel-export-result {
+    background: var(--gray-0);
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid var(--gray-100);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .excel-info {
+      font-size: 13px;
+      line-height: 1.6;
+
+      .label {
+        color: var(--gray-600);
+        margin-right: 4px;
+      }
+
+      .file-name {
+        font-weight: 500;
+      }
+
+      .file-path {
+        word-break: break-all;
+        color: var(--gray-700);
+      }
+    }
+
+    .excel-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
   }
 }
 </style>

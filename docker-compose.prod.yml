@@ -61,26 +61,26 @@ services:
     command: nginx -g "daemon off;"
     restart: unless-stopped
 
-  graph:
-    image: neo4j:5.26
-    container_name: graph
-    volumes:
-      - ./docker/volumes/neo4j/data:/data
-      - ./docker/volumes/neo4j/logs:/var/lib/neo4j/logs
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:7474 || exit 1"]
-      interval: 20s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    environment:
-      - NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-0123456789}
-      - NEO4J_server_bolt_listen__address=0.0.0.0:7687
-      - NEO4J_server_http_listen__address=0.0.0.0:7474
-      - ENTITY_EMBEDDING=true
-    networks:
-      - app-network
-    restart: unless-stopped
+  # graph:
+  #   image: neo4j:5.26
+  #   container_name: graph
+  #   volumes:
+  #     - ./docker/volumes/neo4j/data:/data
+  #     - ./docker/volumes/neo4j/logs:/var/lib/neo4j/logs
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:7474 || exit 1"]
+  #     interval: 20s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 30s
+  #   environment:
+  #     - NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-0123456789}
+  #     - NEO4J_server_bolt_listen__address=0.0.0.0:7687
+  #     - NEO4J_server_http_listen__address=0.0.0.0:7474
+  #     - ENTITY_EMBEDDING=true
+  #   networks:
+  #     - app-network
+  #   restart: unless-stopped
 
   etcd:
     container_name: milvus-etcd
@@ -149,38 +149,38 @@ services:
       - app-network
     restart: unless-stopped
 
-  mineru-vllm-server:
-    build:
-      context: .
-      dockerfile: docker/mineru.Dockerfile
-    image: mineru-vllm:latest
-    container_name: mineru
-    profiles:
-      - all
-    env_file:
-      - .env
-    environment:
-      MINERU_MODEL_SOURCE: local
-    entrypoint: mineru-vllm-server
-    command:
-      --host 0.0.0.0
-      --port 30000
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    ipc: host
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["0"]
-              capabilities: [gpu]
-    networks:
-      - app-network
-    restart: unless-stopped
+  # mineru-vllm-server:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/mineru.Dockerfile
+  #   image: mineru-vllm:latest
+  #   container_name: mineru
+  #   profiles:
+  #     - all
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     MINERU_MODEL_SOURCE: local
+  #   entrypoint: mineru-vllm-server
+  #   command:
+  #     --host 0.0.0.0
+  #     --port 30000
+  #   ulimits:
+  #     memlock: -1
+  #     stack: 67108864
+  #   ipc: host
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             device_ids: ["0"]
+  #             capabilities: [gpu]
+  #   networks:
+  #     - app-network
+  #   restart: unless-stopped
 
   mineru-api:
     build:

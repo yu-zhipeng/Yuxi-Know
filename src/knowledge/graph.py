@@ -2,6 +2,7 @@ import json
 import os
 import traceback
 import warnings
+from typing import Any
 
 from neo4j import GraphDatabase as GD
 
@@ -66,25 +67,24 @@ class GraphDatabase:
             # 首先尝试获取一个连通的子图
             query_str = """
                 // 获取高度数节点作为种子节点
-                MATCH (seed:Entity)
+                MATCH (seed)  // 去掉:Entity标签，或使用:人口
                 WITH seed, COUNT{(seed)-[]->()} + COUNT{(seed)<-[]-()} as degree
                 WHERE degree > 0
+                WITH seed, degree
                 ORDER BY degree DESC
                 LIMIT 5
 
                 // 为每个种子节点收集更多邻居节点
                 UNWIND seed as s
-                MATCH (s)-[*1..1]-(neighbor:Entity)
+                MATCH (s)-[*1..1]-(neighbor)  // 去掉:Entity标签
                 WITH s, neighbor, COUNT{(s)-[]->()} + COUNT{(s)<-[]-()} as s_degree
                 WITH s, s_degree, collect(DISTINCT neighbor) as neighbors
-                // 调整限制比例，允许更多的邻居节点
                 WITH s, s_degree, neighbors[0..toInteger($num * 0.15)] as limited_neighbors
 
-                // 从邻居节点扩展到二跳节点，形成开枝散叶结构
+                // 从邻居节点扩展到二跳节点
                 UNWIND limited_neighbors as neighbor
-                OPTIONAL MATCH (neighbor)-[*1..1]-(second_hop:Entity)
+                OPTIONAL MATCH (neighbor)-[*1..1]-(second_hop)
                 WHERE second_hop <> s
-                // 增加二跳节点的数量
                 WITH s, limited_neighbors, neighbor, collect(DISTINCT second_hop)[0..5] as second_hops
 
                 // 收集所有连通节点
@@ -96,17 +96,29 @@ class GraphDatabase:
                 // 确保不会超过请求的节点数量
                 WITH connected_nodes[0..$num] as final_nodes
 
-                // 获取这些节点之间的关系，避免双向边
+                // 获取这些节点之间的关系
                 UNWIND final_nodes as n
                 OPTIONAL MATCH (n)-[rel]-(m)
                 WHERE m IN final_nodes AND elementId(n) < elementId(m)
                 RETURN
-                    {id: elementId(n), name: n.name} AS h,
+                    {
+                        id: elementId(n), 
+                        label: head(labels(n)),  // 添加实际标签
+                        name: coalesce(n.`姓名`, n.`身份证号码`, elementId(n))  // 使用实际属性
+                    } AS h,
                     CASE WHEN rel IS NOT NULL THEN
-                        {type: rel.type, source_id: elementId(n), target_id: elementId(m)}
+                        {
+                            type: type(rel),  // 使用type()函数，不是rel.type
+                            source_id: elementId(n), 
+                            target_id: elementId(m)
+                        }
                     ELSE null END AS r,
                     CASE WHEN m IS NOT NULL THEN
-                        {id: elementId(m), name: m.name}
+                        {
+                            id: elementId(m), 
+                            label: head(labels(m)),
+                            name: coalesce(m.`姓名`, m.`身份证号码`, elementId(m))
+                        }
                     ELSE null END AS t
                 """
 
@@ -386,92 +398,43 @@ class GraphDatabase:
         """
         tx.run(query)
 
-    def query_node(
-        self, keyword, threshold=0.9, kgdb_name="neo4j", hops=2, max_entities=8, return_format="graph", **kwargs
+    def run_cypher_query(
+        self, cypher: str, params: dict | None = None, kgdb_name: str = "neo4j", return_format: str = "records"
     ):
-        """知识图谱查询节点的入口:"""
+        """执行通用 Cypher 语句，返回数据。
+
+        Args:
+            cypher: 完整的 Cypher 查询语句
+            params: 绑定参数
+            kgdb_name: 数据库名
+            return_format: records | triples
+        """
         assert self.driver is not None, "Database is not connected"
         assert self.is_running(), "图数据库未启动"
 
+        cypher = (cypher or "").strip()
+        if not cypher:
+            raise ValueError("Cypher 语句不能为空")
+
         self.use_database(kgdb_name)
+        params = params or {}
 
-        # 简单空格分词，OR 聚合
-        tokens = [t for t in str(keyword).split(" ") if t]
-        if not tokens:
-            tokens = [str(keyword)]
+        with self.driver.session() as session:
+            result = session.run(cypher, **params)
+            if return_format == "records":
+                return result.data()
 
-        # name -> score 聚合；向量分数累加，模糊命中给予轻权重
-        entity_to_score = {}
-        for token in tokens:
-            # 使用向量索引进行查询
-            results_sim = self._query_with_vector_sim(token, kgdb_name, threshold)
-            for r in results_sim:
-                name = r[0]  # 与下方保持统一的 [0] 取 name 的方式
-                score = 0.0
-                try:
-                    score = float(r["score"])  # neo4j.Record 支持键访问
-                except Exception:
-                    # 兜底：若无法取到score，给个基础分
-                    score = 0.5
-                entity_to_score[name] = max(entity_to_score.get(name, 0.0), score)
+            if return_format == "triples":
+                triples: list[tuple[Any, Any, Any]] = []
+                for record in result:
+                    h = record.get("h")
+                    r = record.get("r")
+                    t = record.get("t")
+                    if h is not None and r is not None and t is not None:
+                        triples.append((h, r, t))
+                return triples
 
-            # 模糊查询（不区分大小写），命中加一个较小分
-            results_fuzzy = self._query_with_fuzzy_match(token, kgdb_name)
-            for fr in results_fuzzy:
-                # _query_with_fuzzy_match 返回 values()，形如 [name]
-                name = fr[0]
-                # 给予轻权重，避免覆盖向量高分
-                entity_to_score[name] = max(entity_to_score.get(name, 0.0), 0.3)
-
-        # 排序并截断
-        qualified_entities = [name for name, _ in sorted(entity_to_score.items(), key=lambda x: x[1], reverse=True)][
-            :max_entities
-        ]
-
-        logger.debug(f"Graph Query Entities: {keyword}, {qualified_entities=}")
-
-        # 对每个合格的实体进行查询
-        all_query_results = {"nodes": [], "edges": [], "triples": []}
-        for entity in qualified_entities:
-            query_result = self._query_specific_entity(entity_name=entity, kgdb_name=kgdb_name, hops=hops)
-            if return_format == "graph":
-                all_query_results["nodes"].extend(query_result["nodes"])
-                all_query_results["edges"].extend(query_result["edges"])
-            elif return_format == "triples":
-                all_query_results["triples"].extend(query_result["triples"])
-            else:
-                raise ValueError(f"Invalid return_format: {return_format}")
-
-        # 基础去重
-        if return_format == "graph":
-            seen_node_ids = set()
-            dedup_nodes = []
-            for n in all_query_results["nodes"]:
-                nid = n.get("id") if isinstance(n, dict) else n
-                if nid not in seen_node_ids:
-                    seen_node_ids.add(nid)
-                    dedup_nodes.append(n)
-            all_query_results["nodes"] = dedup_nodes
-
-            seen_edges = set()
-            dedup_edges = []
-            for e in all_query_results["edges"]:
-                key = (e.get("source_id"), e.get("target_id"), e.get("type"))
-                if key not in seen_edges:
-                    seen_edges.add(key)
-                    dedup_edges.append(e)
-            all_query_results["edges"] = dedup_edges
-
-        elif return_format == "triples":
-            seen_triples = set()
-            dedup_triples = []
-            for t in all_query_results["triples"]:
-                if t not in seen_triples:
-                    seen_triples.add(t)
-                    dedup_triples.append(t)
-            all_query_results["triples"] = dedup_triples
-
-        return all_query_results
+            raise ValueError(f"未知的返回类型: {return_format}")
 
     def _query_with_fuzzy_match(self, keyword, kgdb_name="neo4j"):
         """模糊查询"""

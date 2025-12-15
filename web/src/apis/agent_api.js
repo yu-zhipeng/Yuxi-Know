@@ -274,3 +274,10 @@ export const threadApi = {
    */
   deleteThreadAttachment: (threadId, fileId) => apiDelete(`/api/chat/thread/${threadId}/attachments/${fileId}`)
 };
+
+export const exportApi = {
+  downloadGeneratedExport: (filePath) => {
+    const params = new URLSearchParams({ file_path: filePath });
+    return apiRequest(`/api/chat/export/download?${params.toString()}`, {}, true, 'blob');
+  },
+};

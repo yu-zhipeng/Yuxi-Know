@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,7 +15,7 @@ from src.config import config as app_config
 from src.knowledge.indexing import process_file_to_markdown
 from src.utils import logger
 
-ATTACHMENT_ALLOWED_EXTENSIONS: tuple[str, ...] = (".txt", ".md", ".docx", ".html", ".htm")
+ATTACHMENT_ALLOWED_EXTENSIONS: tuple[str, ...] = (".txt", ".md", ".docx", ".html", ".htm", ".xls", ".xlsx")
 MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 MAX_ATTACHMENT_MARKDOWN_CHARS = 32_000
 
@@ -29,6 +30,7 @@ class ConversionResult:
     file_size: int
     markdown: str
     truncated: bool
+    original_file_path: str | None = None
 
 
 def _ensure_workdir() -> Path:
@@ -77,24 +79,32 @@ async def convert_upload_to_markdown(upload: UploadFile) -> ConversionResult:
         raise ValueError(f"不支持的文件类型: {suffix or '未知'}，当前仅支持 {allowed}")
 
     temp_dir = _ensure_workdir()
-    temp_path = temp_dir / f"{uuid.uuid4().hex}{suffix}"
+    tmp_name = f"{uuid.uuid4().hex}{suffix}"
+    temp_path = temp_dir / tmp_name
+    file_id = uuid.uuid4().hex
+    final_name = f"{file_id}_{file_name}"
+    final_path = temp_dir / final_name
+    cleanup_needed = True
 
     try:
         file_size = await _write_upload_to_disk(upload, temp_path)
-        markdown = await process_file_to_markdown(str(temp_path))
+        markdown = await process_file_to_markdown(str(temp_path), params={"return_binary": True})
         markdown, truncated = _truncate_markdown(markdown)
+        os.replace(temp_path, final_path)
+        cleanup_needed = False
         return ConversionResult(
-            file_id=uuid.uuid4().hex,
+            file_id=file_id,
             file_name=file_name,
             file_type=upload.content_type,
             file_size=file_size,
             markdown=markdown,
             truncated=truncated,
+            original_file_path=str(final_path),
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("Attachment conversion failed: %s", exc)
         raise
     finally:
         # Remove the temp file in a thread to avoid blocking the event loop
-        if temp_path.exists():
+        if cleanup_needed and temp_path.exists():
             await asyncio.to_thread(temp_path.unlink)

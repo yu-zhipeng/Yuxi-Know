@@ -2,9 +2,10 @@ import asyncio
 import json
 import traceback
 import uuid
+from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import StreamingResponse, FileResponse
 from langchain.messages import AIMessageChunk, HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel
@@ -46,6 +47,11 @@ class ImageUploadResponse(BaseModel):
 
 
 chat = APIRouter(prefix="/chat", tags=["chat"])
+
+SAVES_ROOT = Path(conf.save_dir).resolve()
+SAVES_ROOT.mkdir(parents=True, exist_ok=True)
+EXPORTS_ROOT = (SAVES_ROOT / "exports").resolve()
+EXPORTS_ROOT.mkdir(parents=True, exist_ok=True)
 
 # =============================================================================
 # > === 智能体管理分组 ===
@@ -1145,6 +1151,7 @@ async def upload_thread_attachment(
         "markdown": conversion.markdown,
         "uploaded_at": utc_isoformat(),
         "truncated": conversion.truncated,
+        "file_path": conversion.original_file_path,
     }
     await conv_manager.add_attachment(conversation.id, attachment_record)
 
@@ -1184,6 +1191,53 @@ async def delete_thread_attachment(
     if not removed:
         raise HTTPException(status_code=404, detail="附件不存在或已被删除")
     return {"message": "附件已删除"}
+
+
+def _validate_export_file_path(file_path: str) -> Path:
+    if not file_path:
+        raise HTTPException(status_code=400, detail="文件路径不能为空")
+
+    candidate = Path(file_path)
+    try:
+        if candidate.is_absolute():
+            resolved = candidate.resolve()
+        else:
+            relative = candidate
+            parts = list(relative.parts)
+            while parts and parts[0].lower() == SAVES_ROOT.name.lower():
+                parts = parts[1:]
+            relative = Path(*parts) if parts else Path(".")
+            resolved = (SAVES_ROOT / relative).resolve()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="文件不存在") from exc
+
+    if EXPORTS_ROOT not in resolved.parents and resolved != EXPORTS_ROOT:
+        raise HTTPException(status_code=403, detail="无权访问该文件")
+
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    return resolved
+
+
+@chat.get("/export/download")
+async def download_generated_export(
+    file_path: str = Query(..., description="要下载的导出文件路径"),
+    current_user: User = Depends(get_required_user),
+):
+    """下载服务端生成的导出文件"""
+    resolved = _validate_export_file_path(file_path)
+    suffix = resolved.suffix.lower()
+    media_type = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        if suffix in {".xlsx", ".xls"}
+        else "application/octet-stream"
+    )
+    return FileResponse(
+        path=resolved,
+        filename=resolved.name,
+        media_type=media_type,
+    )
 
 
 # =============================================================================

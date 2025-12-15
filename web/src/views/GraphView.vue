@@ -17,7 +17,7 @@
           <div class="status-indicator" :class="graphStatusClass"></div>
           <span class="status-text">{{ graphStatusText }}</span>
         </div>
-        <a-button type="default" @click="openLink('http://localhost:7474/')" :icon="h(GlobalOutlined)">
+        <a-button type="default" @click="openLink()" :icon="h(GlobalOutlined)">
           Neo4j 浏览器
         </a-button>
         <a-button type="primary" @click="state.showModal = true" ><UploadOutlined/> 上传文件</a-button>
@@ -356,8 +356,8 @@ const getAuthHeaders = () => {
   return userStore.getAuthHeaders();
 };
 
-const openLink = (url) => {
-  window.open(url, '_blank')
+const openLink = () => {
+  window.open(import.meta.env.VITE_NEO4J_URI || 'http://localhost:7474/', '_blank')
 }
 
 </script>

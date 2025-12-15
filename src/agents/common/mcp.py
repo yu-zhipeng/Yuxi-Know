@@ -22,16 +22,26 @@ MCP_SERVERS = {
     #     "transport": "streamable_http",
     # },
     # 这些 stdio 的 MCP server 需要在本地启动，启动的时候需要安装对应的包，需要时间
-    # "time": {
-    #     "command": "uvx",
-    #     "args": ["mcp-server-time"],
-    #     "transport": "stdio",
-    # },
-    # "mcp_server_chart": {
-    #     "command": "npx",
-    #     "args": ["-y", "@antv/mcp-server-chart"],
-    #     "transport": "stdio"
-    # },
+    "time": {
+        "command": "uvx",
+        "args": ["mcp-server-time"],
+        "transport": "stdio",
+    },
+    "mcp_server_chart": {
+        "command": "npx",
+        "args": ["-y", "@antv/mcp-server-chart"],
+        "transport": "stdio"
+    },
+    "excel": {
+      "args": [
+        "--yes",
+        "@negokaz/excel-mcp-server"
+      ],
+      "command": "npx",
+      "env": {
+        "EXCEL_MCP_PAGING_CELLS_LIMIT": "4000"
+      }
+    }
     # 更多用法参考：https://xerrors.github.io/Yuxi-Know/latest/advanced/agents-config.html#内置工具与-mcp-集成
 }
 

@@ -1,8 +1,12 @@
 """Deep Agent Context - 基于BaseContext的深度分析上下文配置"""
 
 from dataclasses import dataclass, field
+from typing import Annotated
 
-from src.agents.common.context import BaseContext
+from src.agents.common import BaseContext, gen_tool_info
+from src.agents.common.mcp import MCP_SERVERS
+from src.agents.common.subagents import calc_agent_tool
+from src.agents.common.tools import search
 
 DEEP_PROMPT = """你是一位专家级研究员。你的工作是进行彻底的研究，然后撰写一份精美的报告。
 
@@ -101,4 +105,22 @@ class DeepContext(BaseContext):
     system_prompt: str = field(
         default=DEEP_PROMPT,
         metadata={"name": "系统提示词", "description": "Deep智能体的角色和行为指导"},
+    )
+
+    tools: Annotated[list[dict], {"__template_metadata__": {"kind": "tools"}}] = field(
+        default_factory=list,
+        metadata={
+            "name": "工具",
+            "options": gen_tool_info([search, calc_agent_tool]),
+            "description": "允许 Deep Agent 使用的基础工具列表",
+        },
+    )
+
+    mcps: list[str] = field(
+        default_factory=list,
+        metadata={
+            "name": "MCP服务器",
+            "options": list(MCP_SERVERS.keys()),
+            "description": "可启用的 MCP Server 名称",
+        },
     )

@@ -163,29 +163,6 @@ const mainList = [{
         class="fill debug-trigger"
       ></div>
 
-
-      <div class="github nav-item">
-        <a-tooltip placement="right">
-          <template #title>欢迎 Star</template>
-          <a href="https://github.com/xerrors/Yuxi-Know" target="_blank" class="github-link">
-            <GithubOutlined class="icon" />
-            <span v-if="githubStars > 0" class="github-stars">
-              <span class="star-count">{{ (githubStars / 1000).toFixed(1) }}k</span>
-            </span>
-          </a>
-        </a-tooltip>
-      </div>
-
-
-        <!-- <div class="nav-item api-docs">
-        <a-tooltip placement="right">
-          <template #title>接口文档 {{ apiDocsUrl }}</template>
-          <a :href="apiDocsUrl" target="_blank" class="github-link">
-            <ApiOutlined class="icon" style="color: var(--gray-1000);"/>
-          </a>
-        </a-tooltip>
-      </div> -->
-
       <!-- 用户信息组件 -->
       <div class="nav-item user-info">
         <UserInfoComponent />
