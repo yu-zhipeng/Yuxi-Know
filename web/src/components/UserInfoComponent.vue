@@ -21,23 +21,23 @@
             </div>
           </a-menu-item>
           <a-menu-divider />
-          <a-menu-item key="docs" @click="openDocs">
+          <!-- <a-menu-item key="docs" @click="openDocs">
             <BookOpen size="16"/>
             <span class="menu-text">文档中心</span>
-          </a-menu-item>
+          </a-menu-item> -->
           <a-menu-item key="theme" @click="toggleTheme">
             <component :is="themeStore.isDark ? Sun : Moon" size="16"/>
             <span class="menu-text">{{ themeStore.isDark ? '切换到浅色模式' : '切换到深色模式 (Beta)' }}</span>
           </a-menu-item>
           <a-menu-divider />
-          <a-menu-item key="setting" @click="goToSetting">
+          <!-- <a-menu-item key="setting" @click="goToSetting">
             <Settings size="16"/>
             <span class="menu-text">系统设置</span>
-          </a-menu-item>
-          <a-menu-item key="logout" @click="logout">
+          </a-menu-item> -->
+          <!-- <a-menu-item key="logout" @click="logout">
             <LogOut size="16"/>
             <span class="menu-text">退出登录</span>
-          </a-menu-item>
+          </a-menu-item> -->
         </a-menu>
       </template>
     </a-dropdown>

@@ -261,8 +261,8 @@ const lockCountdown = ref(null);
 
 // 登录表单
 const loginForm = reactive({
-  loginId: '', // 支持user_id或phone_number登录
-  password: ''
+  loginId: 'manager', // 支持user_id或phone_number登录
+  password: '123456'
 });
 
 // 管理员初始化表单
@@ -363,7 +363,7 @@ const handleLogin = async () => {
     if (redirectPath === '/') {
       // 如果是管理员，直接跳转到/chat页面
       if (userStore.isAdmin) {
-        router.push('/agent');
+        router.push(`/agent/${agentStore.defaultAgentId}`);
         return;
       }
 
@@ -497,8 +497,14 @@ const checkServerHealth = async () => {
 onMounted(async () => {
   // 如果已登录，跳转到首页
   if (userStore.isLoggedIn) {
-    router.push('/');
+    router.push('/agent/ChatbotAgent');
     return;
+  }
+
+  if(!userStore.isLoggedIn){
+    await handleLogin()
+    router.push('/agent/ChatbotAgent');
+    return
   }
 
   // 首先检查服务器健康状态
